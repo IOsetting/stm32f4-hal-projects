@@ -1,0 +1,13 @@
+# Compiled file
+*.o
+*.d
+*.crf
+
+# Log file
+*.log
+
+# IDE generated files
+**/*.uvguix.*
+**/DebugConfig
+**/Listings
+**/Objects
