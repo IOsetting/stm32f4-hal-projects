@@ -501,6 +501,11 @@
               <FileType>1</FileType>
               <FilePath>..\..\..\Hardwares\uart.c</FilePath>
             </File>
+            <File>
+              <FileName>sys.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\Hardwares\sys.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
