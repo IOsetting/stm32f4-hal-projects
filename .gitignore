@@ -8,6 +8,7 @@
 
 # IDE generated files
 **/*.uvguix.*
+**/*.scvd
 **/DebugConfig
 **/Listings
 **/Objects
