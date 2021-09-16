@@ -23,12 +23,15 @@ void NRF24L01_Init(void)
 
   GPIO_InitStruct.Pin = NRF24_PIN_IRQ;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(NRF24_GPIOx, &GPIO_InitStruct);
 
-  HAL_NVIC_SetPriority(NRF24_EXTIx_IRQx, 0, 0);
-  HAL_NVIC_EnableIRQ(NRF24_EXTIx_IRQx);
-  
+  if (NRF24_MODE == NRF24L01_modeRX)
+  {
+    HAL_NVIC_SetPriority(NRF24_EXTIx_IRQx, 0, 0);
+    HAL_NVIC_EnableIRQ(NRF24_EXTIx_IRQx);
+  }
+
   CSN(1);
 }
 
@@ -97,10 +100,10 @@ HAL_StatusTypeDef NRF24L01_initCheck(SPI_HandleTypeDef *hspi)
   NRF24L01_cmd(hspi, NRF24L01_CMD_FLUSH_TX, NRF24L01_CMD_NOP);
   NRF24L01_clearIRQFlags(hspi);
 
-  if (NRF24L01_write(hspi, NRF24L01_CMD_REGISTER_W | NRF24L01_REG_TX_ADDR, addr, NRF24L01_ADDR_WIDTH) != HAL_OK) {
+  if (NRF24L01_write(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_TX_ADDR, addr, NRF24L01_ADDR_WIDTH) != HAL_OK) {
     return HAL_ERROR;
   }
-  if (NRF24L01_read(hspi, NRF24L01_CMD_REGISTER_R | NRF24L01_REG_TX_ADDR, NRF24L01_ADDR_WIDTH) != HAL_OK) {
+  if (NRF24L01_read(hspi, NRF24L01_CMD_R_REGISTER | NRF24L01_REG_TX_ADDR, NRF24L01_ADDR_WIDTH) != HAL_OK) {
     return HAL_ERROR;
   }
   for (i = 0; i < NRF24L01_ADDR_WIDTH; i++) {
@@ -109,24 +112,27 @@ HAL_StatusTypeDef NRF24L01_initCheck(SPI_HandleTypeDef *hspi)
   return HAL_OK;
 }
 
+uint8_t NRF24L01_readStatus(SPI_HandleTypeDef *hspi)
+{
+  NRF24L01_cmd(hspi, NRF24L01_CMD_R_REGISTER | NRF24L01_REG_STATUS, NRF24L01_CMD_NOP);
+  return NRF24L01_rxbuff.opt;
+}
 
+/**
+* Flush RX FIFO, used in RX mode. Should not be executed during transmission of acknowledge, 
+* that is, acknowledge package will not be completed.
+*/
 HAL_StatusTypeDef NRF24L01_flushRX(SPI_HandleTypeDef *hspi)
 {
   return NRF24L01_cmd(hspi, NRF24L01_CMD_FLUSH_RX, NRF24L01_CMD_NOP);
 }
 
+/**
+* Flush TX FIFO, used in TX mode
+*/
 HAL_StatusTypeDef NRF24L01_flushTX(SPI_HandleTypeDef *hspi)
 {
   return NRF24L01_cmd(hspi, NRF24L01_CMD_FLUSH_TX, NRF24L01_CMD_NOP);
-}
-
-/**
-* Clear IRQ bit of the STATUS register
-*   reg - NRF24L01_FLAG_RX_DREADY, NRF24L01_FLAG_TX_DSENT, NRF24L01_FLAG_MAX_RT
-*/
-HAL_StatusTypeDef NRF24L01_clearIRQFlag(SPI_HandleTypeDef *hspi, uint8_t flag)
-{
-  return NRF24L01_cmd(hspi, NRF24L01_CMD_REGISTER_W | NRF24L01_REG_STATUS, flag);
 }
 
 /**
@@ -134,40 +140,69 @@ HAL_StatusTypeDef NRF24L01_clearIRQFlag(SPI_HandleTypeDef *hspi, uint8_t flag)
 */
 HAL_StatusTypeDef NRF24L01_clearIRQFlags(SPI_HandleTypeDef *hspi)
 {
-  return NRF24L01_cmd(hspi, NRF24L01_CMD_REGISTER_W | NRF24L01_REG_STATUS, 
-     NRF24L01_FLAG_RX_DREADY|NRF24L01_FLAG_TX_DSENT|NRF24L01_FLAG_MAX_RT);
+  return NRF24L01_cmd(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_STATUS, NRF24L01_STATUS_IT_BITS);
 }
 
 /**
 * Common configurations
 */
-HAL_StatusTypeDef NRF24L01_config(SPI_HandleTypeDef *hspi)
+HAL_StatusTypeDef NRF24L01_config(SPI_HandleTypeDef *hspi, uint8_t *tx_addr, uint8_t *rx_addr)
 {
-  // RX P0 Payload Width
-  NRF24L01_cmd(hspi, NRF24L01_CMD_REGISTER_W | NRF24L01_REG_RX_PW_P0, NRF24L01_PLOAD_WIDTH);
-  // 使能接收通道0自动应答
-  NRF24L01_cmd(hspi, NRF24L01_CMD_REGISTER_W | NRF24L01_REG_EN_AA, 0x3f);
-  // 使能接收通道0
-  NRF24L01_cmd(hspi, NRF24L01_CMD_REGISTER_W | NRF24L01_REG_EN_RXADDR, 0x3f);
-  // 选择射频通道40 - 2.440GHz = 2.400G  + 0.040G
-  NRF24L01_cmd(hspi, NRF24L01_CMD_REGISTER_W | NRF24L01_REG_RF_CH, 40);
+  // RX P0 payload width
+  NRF24L01_cmd(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_RX_PW_P0, NRF24L01_PLOAD_WIDTH);
+  //NRF24L01_cmd(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_RX_PW_P1, NRF24L01_PLOAD_WIDTH);
+  // Enable auto ACK
+  NRF24L01_cmd(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_EN_AA, 0x3f);
+  // Enable RX pipe 0
+  NRF24L01_cmd(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_EN_RXADDR, 0x3f);
+  // RF channel 40 - 2.440GHz = 2.400G  + 0.040G
+  NRF24L01_cmd(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_RF_CH, 40);
   // 000+0+[0:1Mbps,1:2Mbps]+[00:-18dbm,01:-12dbm,10:-6dbm,11:0dbm]+[0:LNA_OFF,1:LNA_ON]
   // 01:1Mbps,-18dbm; 03:1Mbps,-12dbm; 05:1Mbps,-6dbm; 07:1Mbps,0dBm
   // 09:2Mbps,-18dbm; 0b:2Mbps,-12dbm; 0d:2Mbps,-6dbm; 0f:2Mbps,0dBm, 
-  NRF24L01_cmd(hspi, NRF24L01_CMD_REGISTER_W | NRF24L01_REG_RF_SETUP, 0x07);
+  NRF24L01_cmd(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_RF_SETUP, 0x07);
   // 0A:delay=250us,count=10, 1A:delay=500us,count=10
-  NRF24L01_cmd(hspi, NRF24L01_CMD_REGISTER_W | NRF24L01_REG_SETUP_RETR, 0x03);
+  NRF24L01_cmd(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_SETUP_RETR, 0x0A);
+  CE(0);
+  if (NRF24_MODE == NRF24L01_modeRX)
+  {
+    NRF24L01_write(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_TX_ADDR, tx_addr, NRF24L01_ADDR_WIDTH);
+    NRF24L01_write(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_RX_ADDR_P0, rx_addr, NRF24L01_ADDR_WIDTH);
+    //NRF24L01_write(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_RX_ADDR_P1, rx_addr, NRF24L01_ADDR_WIDTH);
+    /**
+    REG 0x00: 
+    0)PRIM_RX     0:TX             1:RX
+    1)PWR_UP      0:OFF            1:ON
+    2)CRCO        0:8bit CRC       1:16bit CRC
+    3)EN_CRC      Enabled if any of EN_AA is high
+    4)MASK_MAX_RT 0:IRQ low        1:NO IRQ
+    5)MASK_TX_DS  0:IRQ low        1:NO IRQ
+    6)MASK_RX_DR  0:IRQ low        1:NO IRQ
+    7)Reserved    0
+    */
+    NRF24L01_cmd(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_CONFIG, 0x0F); //RX,PWR_UP,CRC16,EN_CRC
+    NRF24L01_flushRX(hspi);
+  }
+  else 
+  {
+    NRF24L01_write(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_TX_ADDR, tx_addr, NRF24L01_ADDR_WIDTH);
+    NRF24L01_write(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_RX_ADDR_P0, tx_addr, NRF24L01_ADDR_WIDTH);
+    NRF24L01_write(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_RX_ADDR_P1, rx_addr, NRF24L01_ADDR_WIDTH);
+    NRF24L01_cmd(hspi, NRF24L01_CMD_W_REGISTER + NRF24L01_REG_CONFIG, 0x0E); //TX,PWR_UP,CRC16,EN_CRC
+  }
+  CE(1);
   return HAL_OK;
 }
 
 /**
 * Start NRF24L01 in TX mode
 */
-HAL_StatusTypeDef NRF24L01_txMode(SPI_HandleTypeDef *hspi, uint8_t *tx_addr)
+HAL_StatusTypeDef NRF24L01_txMode(SPI_HandleTypeDef *hspi, uint8_t *tx_addr, uint8_t *rx_addr)
 {
-  NRF24L01_write(hspi, NRF24L01_CMD_REGISTER_W | NRF24L01_REG_TX_ADDR, tx_addr, NRF24L01_ADDR_WIDTH);
-  NRF24L01_write(hspi, NRF24L01_CMD_REGISTER_W + NRF24L01_REG_RX_ADDR_P0, tx_addr, NRF24L01_ADDR_WIDTH);
-  NRF24L01_cmd(hspi, NRF24L01_CMD_REGISTER_W + NRF24L01_REG_CONFIG, 0x0E); //TX,PWR_UP,CRC16,EN_CRC
+  NRF24L01_write(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_TX_ADDR, tx_addr, NRF24L01_ADDR_WIDTH);
+  NRF24L01_write(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_RX_ADDR_P0, tx_addr, NRF24L01_ADDR_WIDTH);
+  NRF24L01_write(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_RX_ADDR_P1, rx_addr, NRF24L01_ADDR_WIDTH);
+  NRF24L01_cmd(hspi, NRF24L01_CMD_W_REGISTER + NRF24L01_REG_CONFIG, 0x0E); //TX,PWR_UP,CRC16,EN_CRC
   return HAL_OK;
 }
 
@@ -176,8 +211,10 @@ HAL_StatusTypeDef NRF24L01_txMode(SPI_HandleTypeDef *hspi, uint8_t *tx_addr)
 */
 HAL_StatusTypeDef NRF24L01_rxMode(SPI_HandleTypeDef *hspi, uint8_t *tx_addr, uint8_t *rx_addr)
 {
-  NRF24L01_write(hspi, NRF24L01_CMD_REGISTER_W | NRF24L01_REG_TX_ADDR, tx_addr, NRF24L01_ADDR_WIDTH);
-  NRF24L01_write(hspi, NRF24L01_CMD_REGISTER_W | NRF24L01_REG_RX_ADDR_P0, rx_addr, NRF24L01_ADDR_WIDTH);
+  CE(0);
+  NRF24L01_write(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_TX_ADDR, tx_addr, NRF24L01_ADDR_WIDTH);
+  NRF24L01_write(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_RX_ADDR_P0, rx_addr, NRF24L01_ADDR_WIDTH);
+  //NRF24L01_write(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_RX_ADDR_P1, rx_addr, NRF24L01_ADDR_WIDTH);
   /**
   REG 0x00: 
   0)PRIM_RX     0:TX             1:RX
@@ -189,49 +226,85 @@ HAL_StatusTypeDef NRF24L01_rxMode(SPI_HandleTypeDef *hspi, uint8_t *tx_addr, uin
   6)MASK_RX_DR  0:IRQ low        1:NO IRQ
   7)Reserved    0
   */
-  NRF24L01_cmd(hspi, NRF24L01_CMD_REGISTER_W | NRF24L01_REG_CONFIG, 0x0F); //RX,PWR_UP,CRC16,EN_CRC
+  NRF24L01_cmd(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_CONFIG, 0x0F); //RX,PWR_UP,CRC16,EN_CRC
+  CE(1);
+  NRF24L01_flushRX(hspi);
   return HAL_OK;
 }
 
 void NRF24L01_startFastWrite(SPI_HandleTypeDef *hspi, const void* txbuf)
 {
-    NRF24L01_write(hspi, NRF24L01_CMD_REGISTER_W | NRF24L01_CMD_TX_PLOAD_W, txbuf, NRF24L01_PLOAD_WIDTH);
-    CE(1);
+  NRF24L01_write(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_CMD_W_TX_PAYLOAD, txbuf, NRF24L01_PLOAD_WIDTH);
+  CE(1);
 }
 
 HAL_StatusTypeDef NRF24L01_writeFast(SPI_HandleTypeDef *hspi, const void* txbuf)
 {
   //Blocking only if FIFO is full. This will loop and block until TX is successful or fail
-  do 
+  while (NRF24L01_readStatus(hspi) & NRF24L01_STATUS_TX_FULL)
   {
-    NRF24L01_cmd(hspi, NRF24L01_CMD_REGISTER_W | NRF24L01_REG_STATUS, NRF24L01_CMD_NOP);
-    if (NRF24L01_rxbuff.opt & NRF24L01_FLAG_MAX_RT) 
+    //printf("%02X\r\n", NRF24L01_rxbuff.opt);
+    if (NRF24L01_rxbuff.opt & NRF24L01_STATUS_MAX_RT) 
     {
       return HAL_ERROR;
     }
-  } while (NRF24L01_rxbuff.opt & NRF24L01_FLAG_TX_FULL);
-
+  }
   NRF24L01_startFastWrite(hspi,txbuf);
   return HAL_OK;
 }
 
 void NRF24L01_resetTX(SPI_HandleTypeDef *hspi)
 {
-  NRF24L01_cmd(hspi, NRF24L01_CMD_REGISTER_W | NRF24L01_REG_STATUS, NRF24L01_FLAG_MAX_RT);//Clear max retry flag
+  NRF24L01_cmd(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_STATUS, NRF24L01_STATUS_MAX_RT);//Clear max retry flag
   CE(0);
   CE(1);
 }
 
+void NRF24L01_checkFlag(SPI_HandleTypeDef *hspi, uint8_t *tx_ds, uint8_t *max_rt, uint8_t *rx_dr)
+{
+  // Read the status & reset the status in one easy call
+  NRF24L01_cmd(hspi, NRF24L01_CMD_W_REGISTER | NRF24L01_REG_STATUS, NRF24L01_STATUS_IT_BITS);
+  // Report what happened
+  *tx_ds = NRF24L01_rxbuff.opt & NRF24L01_STATUS_TX_DS;
+  *max_rt = NRF24L01_rxbuff.opt & NRF24L01_STATUS_MAX_RT;
+  *rx_dr = NRF24L01_rxbuff.opt & NRF24L01_STATUS_RX_DR;
+}
 
+HAL_StatusTypeDef NRF24L01_rxAvailable(SPI_HandleTypeDef *hspi, uint8_t* pipe_num)
+{
+  NRF24L01_cmd(hspi, NRF24L01_CMD_R_REGISTER | NRF24L01_REG_STATUS, NRF24L01_CMD_NOP);
+  uint8_t pipe = (NRF24L01_rxbuff.opt >> 1) & 0x07;
+  if (pipe > 5)
+    return HAL_ERROR;
+  // If the caller wants the pipe number, include that
+  if (pipe_num)
+    *pipe_num = pipe;
+
+  return HAL_OK;
+}
+
+void NRF24L01_handelIrqFlag(SPI_HandleTypeDef *hspi)
+{
+  uint8_t tx_ds, max_rt, rx_dr, pipe_num, i;
+  NRF24L01_checkFlag(hspi, &tx_ds, &max_rt, &rx_dr);
+  if (NRF24L01_rxAvailable(hspi, &pipe_num) == HAL_OK) {
+    NRF24L01_read(hspi, NRF24L01_CMD_R_RX_PAYLOAD, NRF24L01_PLOAD_WIDTH);
+    /*for (i = 0; i < NRF24L01_PLOAD_WIDTH; i++)
+    {
+      printf("%02X ", NRF24L01_rxbuff.buf[i]);
+    }*/
+    printf(".");
+  }
+}
 
 /**
 * Dump nRF24L01 configuration
 */
-HAL_StatusTypeDef NRF24L01_dumpConfig(SPI_HandleTypeDef *hspi)
+void NRF24L01_dumpConfig(SPI_HandleTypeDef *hspi)
 {
   uint8_t i, j;
   //uint8_t addr[5] = {0xB5, 0x02, 0x03, 0x04, 0x05};
-  //NRF24L01_write(hspi, NRF24L01_CMD_REGISTER_W + NRF24L01_REG_TX_ADDR, addr, NRF24L01_ADDR_WIDTH);
+  //NRF24L01_write(hspi, NRF24L01_CMD_W_REGISTER + NRF24L01_REG_TX_ADDR, addr, NRF24L01_ADDR_WIDTH);
 
   // CONFIG
   NRF24L01_cmd(hspi, NRF24L01_REG_CONFIG, NRF24L01_CMD_NOP);
@@ -331,10 +404,10 @@ HAL_StatusTypeDef NRF24L01_dumpConfig(SPI_HandleTypeDef *hspi)
   NRF24L01_cmd(hspi, NRF24L01_REG_STATUS, NRF24L01_CMD_NOP);
   printf("[0x%02X] 0x%02X IRQ:%03X RX_PIPE:%u TX_FULL:%s\r\n",
       NRF24L01_REG_STATUS,
-      NRF24L01_rxbuff.buf[0],
-      (NRF24L01_rxbuff.buf[0] & 0x70) >> 4,
-      (NRF24L01_rxbuff.buf[0] & 0x0E) >> 1,
-      (NRF24L01_rxbuff.buf[0] & 0x01) ? "YES" : "NO"
+      NRF24L01_rxbuff.opt,
+      (NRF24L01_rxbuff.opt & 0x70) >> 4,
+      (NRF24L01_rxbuff.opt & 0x0E) >> 1,
+      (NRF24L01_rxbuff.opt & 0x01) ? "YES" : "NO"
     );
 
   // OBSERVE_TX
@@ -386,7 +459,7 @@ HAL_StatusTypeDef NRF24L01_dumpConfig(SPI_HandleTypeDef *hspi)
   // TX_ADDR
   NRF24L01_read(hspi, NRF24L01_REG_TX_ADDR, NRF24L01_ADDR_WIDTH);
   printf("[0x%02X] TX_ADDR \"", NRF24L01_REG_TX_ADDR);
-  for (i = 0; i < NRF24L01_ADDR_WIDTH; i++) printf("0x%02X ", NRF24L01_rxbuff.buf[i]);
+  for (i = 0; i < NRF24L01_ADDR_WIDTH; i++) printf("%02X ", NRF24L01_rxbuff.buf[i]);
   printf("\"\r\n");
 
   // RX_PW_P0

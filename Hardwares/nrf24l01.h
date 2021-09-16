@@ -17,27 +17,34 @@ typedef struct{
 
 #pragma pack(pop)
 
+typedef enum
+  {
+  NRF24L01_modeRX  = 0x00,
+  NRF24L01_modeTX  = 0x01
+} NRF24L01_mode;
+
 // CE Pin & CSN Pin & IRQ Pin
 #define CE(x)       (x)? HAL_GPIO_WritePin(NRF24_GPIOx,NRF24_PIN_CE,GPIO_PIN_SET) : HAL_GPIO_WritePin(NRF24_GPIOx,NRF24_PIN_CE,GPIO_PIN_RESET)
 #define CSN(x)      (x)? HAL_GPIO_WritePin(NRF24_GPIOx,NRF24_PIN_CSN,GPIO_PIN_SET) : HAL_GPIO_WritePin(NRF24_GPIOx,NRF24_PIN_CSN,GPIO_PIN_RESET)
 #define IRQ         HAL_GPIO_ReadPin(NRF24_GPIOx,NRF24_PIN_IRQ)
 
 // SPI(nRF24L01) commands
-#define NRF24L01_CMD_REGISTER_R     0x00 // Register read
-#define NRF24L01_CMD_REGISTER_W     0x20 // Register write
+#define NRF24L01_CMD_R_REGISTER     0x00 // Register read (use with registers)
+#define NRF24L01_CMD_W_REGISTER     0x20 // Register write (use with registers)
 #define NRF24L01_CMD_ACTIVATE       0x50 // (De)Activates R_RX_PL_WID, W_ACK_PAYLOAD, W_TX_PAYLOAD_NOACK features
-#define NRF24L01_CMD_RX_PLOAD_WID_R 0x60 // Read RX-payload width for the top R_RX_PAYLOAD in the RX FIFO.
-#define NRF24L01_CMD_RX_PLOAD_R     0x61 // Read RX payload
-#define NRF24L01_CMD_TX_PLOAD_W     0xA0 // Write TX payload
-#define NRF24L01_CMD_ACK_PAYLOAD_W  0xA8 // Write ACK payload
-#define NRF24L01_CMD_TX_PAYLOAD_NOACK_W 0xB0 //Write TX payload and disable AUTOACK
+#define NRF24L01_CMD_R_RX_PL_WID    0x60 // Read RX-payload width for the top R_RX_PAYLOAD in the RX FIFO.
+#define NRF24L01_CMD_R_RX_PAYLOAD   0x61 // Read RX payload
+#define NRF24L01_CMD_W_TX_PAYLOAD   0xA0 // Write TX payload
 #define NRF24L01_CMD_FLUSH_TX       0xE1 // Flush TX FIFO
 #define NRF24L01_CMD_FLUSH_RX       0xE2 // Flush RX FIFO
-#define NRF24L01_CMD_REUSE_TX_PL    0xE3 // Reuse TX payload
-#define NRF24L01_CMD_LOCK_UNLOCK    0x50 // Lock/unlock exclusive features
+#define NRF24L01_CMD_W_ACK_PAYLOAD  0xA8 // Write ACK payload
+#define NRF24L01_CMD_W_TX_PAYLOAD_NOACK 0xB0 //Write TX payload and disable AUTOACK
 #define NRF24L01_CMD_NOP            0xFF // No operation (used for reading status register)
 
-// SPI(nRF24L01) register address definitions
+#define NRF24L01_CMD_REUSE_TX_PL    0xE3 // Reuse TX payload
+#define NRF24L01_CMD_LOCK_UNLOCK    0x50 // Lock/unlock exclusive features
+
+// Register definitions
 #define NRF24L01_REG_CONFIG         0x00 // Configuration register
 #define NRF24L01_REG_EN_AA          0x01 // Enable "Auto acknowledgment"
 #define NRF24L01_REG_EN_RXADDR      0x02 // Enable RX addresses
@@ -65,16 +72,21 @@ typedef struct{
 #define NRF24L01_REG_DYNPD          0x1C // Enable dynamic payload length
 #define NRF24L01_REG_FEATURE        0x1D // Feature register
 
-// Register bits definitions
+// Register CONFIG bits definitions
 #define NRF24L01_CONFIG_PRIM_RX     0x01 // PRIM_RX bit in CONFIG register
 #define NRF24L01_CONFIG_PWR_UP      0x02 // PWR_UP bit in CONFIG register
-#define NRF24L01_FEATURE_EN_DYN_ACK 0x01 // EN_DYN_ACK bit in FEATURE register
-#define NRF24L01_FEATURE_EN_ACK_PAY 0x02 // EN_ACK_PAY bit in FEATURE register
-#define NRF24L01_FEATURE_EN_DPL     0x04 // EN_DPL bit in FEATURE register
-#define NRF24L01_FLAG_RX_DREADY     0x40 // RX_DR bit (data ready RX FIFO interrupt)
-#define NRF24L01_FLAG_TX_DSENT      0x20 // TX_DS bit (data sent TX FIFO interrupt)
-#define NRF24L01_FLAG_MAX_RT        0x10 // MAX_RT bit (maximum number of TX re-transmits interrupt)
-#define NRF24L01_FLAG_TX_FULL       0x01 // 1:TX FIFO full
+
+// Register FEATURE bits definitions
+#define NRF24L01_FEATURE_EN_DYN_ACK 0x01 // EN_DYN_ACK bit in FEATURE register, enables the W_TX_PAYLOAD_NOACK command
+#define NRF24L01_FEATURE_EN_ACK_PAY 0x02 // EN_ACK_PAY bit in FEATURE register, enables Payload with ACK
+#define NRF24L01_FEATURE_EN_DPL     0x04 // EN_DPL bit in FEATURE register, enables Dynamic Payload Length
+
+// Register STATUS bits definitions
+#define NRF24L01_STATUS_RX_DR       0x40 // RX_DR bit (data ready RX FIFO interrupt)
+#define NRF24L01_STATUS_TX_DS       0x20 // TX_DS bit (data sent TX FIFO interrupt)
+#define NRF24L01_STATUS_MAX_RT      0x10 // R/W Maximum number of TX retransmits interrupt, If MAX_RT is asserted it must be cleared to enable further communication
+#define NRF24L01_STATUS_IT_BITS     0x70 // RX_DR|TX_DS|MAX_RT
+#define NRF24L01_STATUS_TX_FULL     0x01 // TX FIFO full flag. 1: TX FIFO full. 0: Available locations in TX FIFO
 
 // Register masks definitions
 #define NRF24L01_MASK_REG_MAP       0x1F // Mask bits[4:0] for CMD_RREG and CMD_WREG commands
@@ -100,21 +112,20 @@ HAL_StatusTypeDef NRF24L01_cmd(SPI_HandleTypeDef *hspi, uint8_t cmd, uint8_t arg
 HAL_StatusTypeDef NRF24L01_read(SPI_HandleTypeDef *hspi, uint8_t cmd, uint8_t len);
 HAL_StatusTypeDef NRF24L01_write(SPI_HandleTypeDef *hspi, uint8_t cmd, const uint8_t *tx, uint8_t len);
 HAL_StatusTypeDef NRF24L01_initCheck(SPI_HandleTypeDef *hspi);
-HAL_StatusTypeDef NRF24L01_dumpConfig(SPI_HandleTypeDef *hspi);
+void NRF24L01_dumpConfig(SPI_HandleTypeDef *hspi);
 
+uint8_t NRF24L01_readStatus(SPI_HandleTypeDef *hspi);
 HAL_StatusTypeDef NRF24L01_flushRX(SPI_HandleTypeDef *hspi);
 HAL_StatusTypeDef NRF24L01_flushTX(SPI_HandleTypeDef *hspi);
-HAL_StatusTypeDef NRF24L01_clearIRQFlag(SPI_HandleTypeDef *hspi, uint8_t flag);
 HAL_StatusTypeDef NRF24L01_clearIRQFlags(SPI_HandleTypeDef *hspi);
 
-HAL_StatusTypeDef NRF24L01_config(SPI_HandleTypeDef *hspi);
-HAL_StatusTypeDef NRF24L01_txMode(SPI_HandleTypeDef *hspi, uint8_t *tx_addr);
-HAL_StatusTypeDef NRF24L01_rxMode(SPI_HandleTypeDef *hspi, uint8_t *tx_addr, uint8_t *rx_addr);
+HAL_StatusTypeDef NRF24L01_config(SPI_HandleTypeDef *hspi, uint8_t *tx_addr, uint8_t *rx_addr);
 
 void NRF24L01_startFastWrite(SPI_HandleTypeDef *hspi, const void* txbuf);
 HAL_StatusTypeDef NRF24L01_writeFast(SPI_HandleTypeDef *hspi, const void* txbuf);
 void NRF24L01_resetTX(SPI_HandleTypeDef *hspi);
 
+void NRF24L01_handelIrqFlag(SPI_HandleTypeDef *hspi);
 
 
 #endif /* __NRF24L01_H */

@@ -35,39 +35,54 @@ int main(void)
     printf("Check succeeded\r\n");
   }
 
-  if (NRF24L01_config(&hspi1) != HAL_OK) {
-    printf("Config failed\r\n");
-  } else {
-    printf("Config succeeded\r\n");
-  }
-
   uint8_t tmp[] = {
             0x1F, 0x80, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
             0x21, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x28,
             0x31, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x38,
             0x41, 0x12, 0x13, 0x14, 0x15, 0x16, 0x37, 0x48};
   uint8_t txaddr[5] = {0x32, 0x4E, 0x6F, 0x64, 0x65};
-  uint8_t rxaddr[5] = {0xF2, 0xF3, 0xF4, 0xF5, 0xF6};
-  NRF24L01_txMode(&hspi1, txaddr);
+  uint8_t rxaddr[5] = {0x32, 0x4E, 0x6F, 0x64, 0x22};
+  if (NRF24L01_config(&hspi1, txaddr, rxaddr) != HAL_OK) {
+    printf("Config failed\r\n");
+  } else {
+    printf("Config succeeded\r\n");
+  }
+
   NRF24L01_dumpConfig(&hspi1);
   LED_Off();
-  uint16_t succ, err;
-
-  while (1)
+  if (NRF24_MODE == NRF24L01_modeRX)
   {
-    if (NRF24L01_writeFast(&hspi1, tmp) != HAL_OK) {
-      NRF24L01_resetTX(&hspi1);
-      err++;
-    } else {
-      succ++;
-    }
-    if (err > 255 || succ > 255) {
-      printf("F/S: %d/%d\r\n", err, succ);
-      err = 0;
-      succ = 0;
-    }
-    HAL_Delay(10);
+    while (1);
   }
+  else
+  {
+    uint16_t succ, err;
+    while (1)
+    {
+      if (NRF24L01_writeFast(&hspi1, tmp) != HAL_OK) 
+      {
+        NRF24L01_resetTX(&hspi1);
+        err++;
+      }
+      else 
+      {
+        succ++;
+      }
+      if (err > 255 || succ > 255) 
+      {
+        printf("F/S: %d/%d\r\n", err, succ);
+        err = 0;
+        succ = 0;
+      }
+    }
+  }
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  LED_On();
+  NRF24L01_handelIrqFlag(&hspi1);
+  LED_Off();
 }
 
 void Error_Handler(void)

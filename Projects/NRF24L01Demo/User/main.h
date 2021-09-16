@@ -31,6 +31,7 @@ extern "C" {
 #define RCC_SPIx_CLK_DISABLE()       __HAL_RCC_SPI1_CLK_DISABLE()
 
 /** NRF24 */
+#define NRF24_MODE                   NRF24L01_modeRX
 #define NRF24_GPIOx                  GPIOB
 #define NRF24_PIN_IRQ                GPIO_PIN_13
 #define NRF24_PIN_CE                 GPIO_PIN_14
