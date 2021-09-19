@@ -127,5 +127,4 @@ void NRF24L01_resetTX(SPI_HandleTypeDef *hspi);
 
 void NRF24L01_handelIrqFlag(SPI_HandleTypeDef *hspi);
 
-
 #endif /* __NRF24L01_H */

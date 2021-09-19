@@ -16,8 +16,6 @@ void DebugMon_Handler(void);
 void PendSV_Handler(void);
 void SysTick_Handler(void);
 
-void EXTI15_10_IRQHandler(void);
-
 #ifdef __cplusplus
 }
 #endif
