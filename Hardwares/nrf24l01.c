@@ -289,11 +289,11 @@ void NRF24L01_handelIrqFlag(SPI_HandleTypeDef *hspi)
   NRF24L01_checkFlag(hspi, &tx_ds, &max_rt, &rx_dr);
   if (NRF24L01_rxAvailable(hspi, &pipe_num) == HAL_OK) {
     NRF24L01_read(hspi, NRF24L01_CMD_R_RX_PAYLOAD, NRF24L01_PLOAD_WIDTH);
-    /*for (i = 0; i < NRF24L01_PLOAD_WIDTH; i++)
+    /*for (uint8_t i = 0; i < NRF24L01_PLOAD_WIDTH; i++)
     {
       printf("%02X ", NRF24L01_rxbuff.buf[i]);
-    }*/
-    printf(".");
+    }
+    printf("\r\n");*/
   }
 }
 

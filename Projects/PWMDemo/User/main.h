@@ -20,15 +20,13 @@ extern "C" {
 #define RCC_USARTx_CLK_ENABLE()      __HAL_RCC_USART1_CLK_ENABLE()
 #define RCC_USARTx_CLK_DISABLE()     __HAL_RCC_USART1_CLK_DISABLE()
 
-/** PWM */
+/** TIM PWM */
 #define PWM_TIMx                     TIM2
 #define PWM_GPIOx_CH1                GPIOA
 #define PWM_PIN_CH1                  GPIO_PIN_15
 #define PWM_GPIOx_CH2                GPIOB
 #define PWM_PIN_CH2                  GPIO_PIN_3
 #define PWM_GPIO_AFx_TIMx            GPIO_AF1_TIM2
-#define RCC_TIMx_CLK_ENABLE()        __HAL_RCC_TIM2_CLK_ENABLE()
-#define RCC_TIMx_CLK_DISABLE()       __HAL_RCC_TIM2_CLK_DISABLE()
 
 
 void Error_Handler(void);

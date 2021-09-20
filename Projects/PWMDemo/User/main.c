@@ -27,8 +27,8 @@ int main(void)
   USARTx_UART_Init(&huart1);
   LED_Init();
   LED_Off();
-  TIMx_Init(&htim2);
-  
+  TIMx_PWM_Init(&htim2);
+
   HAL_TIM_PWM_Start(&htim2,TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim2,TIM_CHANNEL_2);
 
